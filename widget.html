@@ -96,11 +96,11 @@ var CONFIG = {
     MODEL_FIELD: 'ufCrm8_1790681206',   // Модель (string)
 
     // Поля сделки (создашь на шаге 2, впишешь их ID сюда)
-    DEAL_BRAND_FIELD: 'UF_CRM_1790687507745',  // ← например 'ufCrm8_1730000000'
-    DEAL_MODEL_FIELD: 'UF_CRM_1790687534528',  // ← например 'ufCrm8_1730000001'
+    DEAL_BRAND_FIELD: 'ufCrm_1790687507745',  // ← например 'ufCrm8_1730000000'
+    DEAL_MODEL_FIELD: 'ufCrm_1790687534528',  // ← например 'ufCrm8_1730000001'
 
     // URL этой страницы (где размещён файл)
-   HANDLER_URL: 'https://Anod77.github.io/car-widget/widget.html'
+    HANDLER_URL: 'https://Anod77.github.io/car-widget/widget.html'
 };
 
 // ============================================================
@@ -191,36 +191,27 @@ function startWidget(dealId) {
 
         modelSelect.innerHTML = '<option value="">Загрузка моделей…</option>';
 
-        BX24.callMethod('crm.item.list', {
-            entityTypeId: CONFIG.SMART_PROCESS_ID,
-            filter: {},
-            select: ['id', 'title', CONFIG.MODEL_FIELD]
-        }, function(res) {
-            if (res.error()) {
-                showStatus('Ошибка загрузки моделей: ' + res.error(), 'err');
-                return;
-            }
-            var items = res.data().items || [];
-            modelSelect.innerHTML = '<option value="">— выберите модель —</option>';
+ 
+BX24.callMethod('crm.item.list', {
+    entityTypeId: CONFIG.SMART_PROCESS_ID,
+    filter: { [CONFIG.BRAND_FIELD]: brandId },  // ← фильтр по ID значения перечисления
+    select: ['id', 'title', CONFIG.MODEL_FIELD]
+}, function(res) {
+    // дальше без ручной фильтрации по марке
+    var items = res.data().items || [];
+    modelSelect.innerHTML = '<option value="">— выберите модель —</option>';
+    items.forEach(function(item) {
+        var modelValue = item[CONFIG.MODEL_FIELD];
+        if (modelValue) {
+            var opt = document.createElement('option');
+            opt.value = modelValue;
+            opt.textContent = modelValue;
+            modelSelect.appendChild(opt);
+        }
+    });
+    modelSelect.disabled = false;
+});
 
-            // Фильтруем по марке на стороне клиента (надёжнее,
-            // т.к. filter по enumeration-полю может не сработать)
-            items.forEach(function(item) {
-                // Проверяем, что марка записи совпадает с выбранной
-                var itemBrand = item[CONFIG.BRAND_FIELD];
-                if (String(itemBrand) === String(brandId)) {
-                    var modelValue = item[CONFIG.MODEL_FIELD];
-                    if (modelValue) {
-                        var opt = document.createElement('option');
-                        opt.value = modelValue;
-                        opt.textContent = modelValue;
-                        modelSelect.appendChild(opt);
-                    }
-                }
-            });
-
-            modelSelect.disabled = false;
-        });
     });
 
     // --- 4. Сохранение в сделку ---
