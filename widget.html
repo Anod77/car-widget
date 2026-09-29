@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Марка и модель</title>
+    <!-- Классическая JS-библиотека Битрикс24 -->
+    <script src="https://api.bitrix24.com/api/v1/"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding: 20px;
+            margin: 0;
+            color: #333;
+        }
+        h3 { margin-top: 0; }
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 4px;
+            margin-top: 12px;
+        }
+        select {
+            padding: 8px 12px;
+            width: 100%;
+            max-width: 350px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        select:disabled { background: #f5f5f5; }
+        button {
+            padding: 10px 24px;
+            background: #2fc7f1;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 16px;
+        }
+        button:hover { background: #0bb4e8; }
+        button:disabled { background: #aaa; cursor: not-allowed; }
+        .status {
+            margin-top: 12px;
+            padding: 10px 14px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .status.ok { background: #d4edda; color: #155724; }
+        .status.err { background: #f8d7da; color: #721c24; }
+        .loading { color: #888; }
+    </style>
+</head>
+<body>
+
+    <!-- Экран загрузки -->
+    <div id="loading" class="loading">Загрузка виджета…</div>
+
+    <!-- Основной интерфейс (показывается в карточке сделки) -->
+    <div id="widget" style="display:none;">
+        <h3>Автомобиль</h3>
+        <div>
+            <label for="brand">Марка</label>
+            <select id="brand">
+                <option value="">— выберите —</option>
+            </select>
+        </div>
+        <div>
+            <label for="model">Модель</label>
+            <select id="model" disabled>
+                <option value="">— сначала выберите марку —</option>
+            </select>
+        </div>
+        <button id="saveBtn">Сохранить в сделку</button>
+        <div id="status"></div>
+    </div>
+
+    <!-- Экран установки (показывается один раз при установке приложения) -->
+    <div id="install" style="display:none;">
+        <h3>Установка виджета «Марка и модель»</h3>
+        <div id="installMsg">Регистрируем вкладку в карточке сделки…</div>
+    </div>
+
+<script>
+// ============================================================
+//  КОНФИГУРАЦИЯ — заполни свои значения
+// ============================================================
+var CONFIG = {
+    // ID смарт-процесса (из твоего webhook-запроса)
+    SMART_PROCESS_ID: 1038,
+
+    // Поля смарт-процесса
+    BRAND_FIELD: 'ufCrm8_1790681113',   // Марка авто (enumeration)
+    MODEL_FIELD: 'ufCrm8_1790681206',   // Модель (string)
+
+    // Поля сделки (создашь на шаге 2, впишешь их ID сюда)
+    DEAL_BRAND_FIELD: 'UF_CRM_1790687507745',  // ← например 'ufCrm8_1730000000'
+    DEAL_MODEL_FIELD: 'UF_CRM_1790687534528',  // ← например 'ufCrm8_1730000001'
+
+    // URL этой страницы (где размещён файл)
+    HANDLER_URL: 'https://github.com/Anod77/car-widget/widget.html'
+};
+
+// ============================================================
+//  ИНИЦИАЛИЗАЦИЯ
+// ============================================================
+BX24.ready(function() {
+    BX24.init(function() {
+        var info = BX24.placement.info();
+
+        if (info && info.placement === 'CRM_DEAL_DETAIL_TAB') {
+            // Открыто как вкладка в карточке сделки
+            startWidget(info.options.ID);
+        } else {
+            // Открыто при установке приложения
+            runInstall();
+        }
+    });
+});
+
+// ============================================================
+//  УСТАНОВКА: регистрируем placement
+// ============================================================
+function runInstall() {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('install').style.display = 'block';
+
+    BX24.callMethod('placement.bind', {
+        PLACEMENT: 'CRM_DEAL_DETAIL_TAB',
+        HANDLER:   CONFIG.HANDLER_URL,
+        TITLE:     'Марка и модель'
+    }, function(res) {
+        var msg = document.getElementById('installMsg');
+        if (res.error()) {
+            msg.innerHTML = '<div class="status err">Ошибка: ' + res.error() +
+                '<br>Проверь, что в настройках приложения указаны права "crm" и "placement".</div>';
+        } else {
+            msg.innerHTML = '<div class="status ok">Готово! Вкладка «Марка и модель» ' +
+                'появилась в карточках сделок. Открой любую сделку и проверь.</div>';
+            BX24.installFinish();
+        }
+    });
+}
+
+// ============================================================
+//  ОСНОВНОЙ ВИДЖЕТ
+// ============================================================
+function startWidget(dealId) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('widget').style.display = 'block';
+
+    var brandSelect = document.getElementById('brand');
+    var modelSelect = document.getElementById('model');
+    var saveBtn = document.getElementById('saveBtn');
+    var brandItems = [];   // [{ID:52, VALUE:"Форд"}, ...]
+
+    // --- 1. Загружаем список марок из полей смарт-процесса ---
+    BX24.callMethod('crm.item.fields', {
+        entityTypeId: CONFIG.SMART_PROCESS_ID
+    }, function(res) {
+        if (res.error()) {
+            showStatus('Ошибка загрузки полей: ' + res.error(), 'err');
+            return;
+        }
+        var fields = res.data().fields;
+        brandItems = fields[CONFIG.BRAND_FIELD].items || [];
+
+        brandItems.forEach(function(item) {
+            var opt = document.createElement('option');
+            opt.value = item.ID;
+            opt.textContent = item.VALUE;
+            brandSelect.appendChild(opt);
+        });
+
+        // --- 2. Читаем текущие значения из сделки ---
+        loadDealValues(dealId);
+    });
+
+    // --- 3. При смене марки — подгружаем модели ---
+    brandSelect.addEventListener('change', function() {
+        var brandId = this.value;
+        modelSelect.innerHTML = '';
+        modelSelect.disabled = true;
+
+        if (!brandId) {
+            modelSelect.innerHTML = '<option value="">— сначала выберите марку —</option>';
+            return;
+        }
+
+        modelSelect.innerHTML = '<option value="">Загрузка моделей…</option>';
+
+        BX24.callMethod('crm.item.list', {
+            entityTypeId: CONFIG.SMART_PROCESS_ID,
+            filter: {},
+            select: ['id', 'title', CONFIG.MODEL_FIELD]
+        }, function(res) {
+            if (res.error()) {
+                showStatus('Ошибка загрузки моделей: ' + res.error(), 'err');
+                return;
+            }
+            var items = res.data().items || [];
+            modelSelect.innerHTML = '<option value="">— выберите модель —</option>';
+
+            // Фильтруем по марке на стороне клиента (надёжнее,
+            // т.к. filter по enumeration-полю может не сработать)
+            items.forEach(function(item) {
+                // Проверяем, что марка записи совпадает с выбранной
+                var itemBrand = item[CONFIG.BRAND_FIELD];
+                if (String(itemBrand) === String(brandId)) {
+                    var modelValue = item[CONFIG.MODEL_FIELD];
+                    if (modelValue) {
+                        var opt = document.createElement('option');
+                        opt.value = modelValue;
+                        opt.textContent = modelValue;
+                        modelSelect.appendChild(opt);
+                    }
+                }
+            });
+
+            modelSelect.disabled = false;
+        });
+    });
+
+    // --- 4. Сохранение в сделку ---
+    saveBtn.addEventListener('click', function() {
+        var brandText = brandSelect.options[brandSelect.selectedIndex].textContent;
+        var modelText = modelSelect.value;
+
+        if (!brandSelect.value) {
+            showStatus('Выберите марку', 'err');
+            return;
+        }
+        if (!modelText) {
+            showStatus('Выберите модель', 'err');
+            return;
+        }
+
+        // Проверяем, что поля сделки настроены
+        if (!CONFIG.DEAL_BRAND_FIELD || !CONFIG.DEAL_MODEL_FIELD) {
+            showStatus('Не настроены поля сделки в CONFIG. ' +
+                'Создай поля и впиши их ID в код виджета.', 'err');
+            return;
+        }
+
+        var fields = {};
+        fields[CONFIG.DEAL_BRAND_FIELD] = brandText;
+        fields[CONFIG.DEAL_MODEL_FIELD] = modelText;
+
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Сохранение…';
+
+        BX24.callMethod('crm.item.update', {
+            entityTypeId: 2,
+            id: dealId,
+            fields: fields
+        }, function(res) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Сохранить в сделку';
+            if (res.error()) {
+                showStatus('Ошибка: ' + res.error(), 'err');
+            } else {
+                showStatus('Сохранено: ' + brandText + ' ' + modelText, 'ok');
+            }
+        });
+    });
+
+    // --- Вспомогательные функции ---
+
+    function loadDealValues(dealId) {
+        BX24.callMethod('crm.item.get', {
+            entityTypeId: 2,
+            id: dealId
+        }, function(res) {
+            if (res.error()) {
+                console.error('Не удалось загрузить сделку:', res.error());
+                return;
+            }
+            var deal = res.data().item;
+            var savedBrand = deal[CONFIG.DEAL_BRAND_FIELD];
+            var savedModel = deal[CONFIG.DEAL_MODEL_FIELD];
+
+            if (savedBrand) {
+                // Ищем марку по тексту в списке
+                for (var i = 0; i < brandSelect.options.length; i++) {
+                    if (brandSelect.options[i].textContent === savedBrand) {
+                        brandSelect.selectedIndex = i;
+                        // Триггерим загрузку моделей
+                        var event = new Event('change');
+                        brandSelect.dispatchEvent(event);
+                        break;
+                    }
+                }
+            }
+            // После загрузки моделей установим сохранённую модель
+            if (savedModel) {
+                // Небольшая задержка, чтобы модели успели загрузиться
+                setTimeout(function() {
+                    for (var i = 0; i < modelSelect.options.length; i++) {
+                        if (modelSelect.options[i].value === savedModel) {
+                            modelSelect.selectedIndex = i;
+                            break;
+                        }
+                    }
+                }, 1500);
+            }
+        });
+    }
+
+    function showStatus(msg, type) {
+        var s = document.getElementById('status');
+        s.className = 'status ' + (type || '');
+        s.textContent = msg;
+        if (type === 'ok') {
+            setTimeout(function() {
+                s.textContent = '';
+                s.className = '';
+            }, 4000);
+        }
+    }
+}
+</script>
+</body>
+</html>
