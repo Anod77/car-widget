@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Марка и модель</title>
-    <!-- Классическая JS-библиотека Битрикс24 -->
+    <!-- Подключаем JS SDK Битрикс24 -->
     <script src="https://api.bitrix24.com/api/v1/"></script>
     <style>
         * { box-sizing: border-box; }
@@ -88,16 +88,17 @@
 //  КОНФИГУРАЦИЯ — заполни свои значения
 // ============================================================
 var CONFIG = {
-    // ID смарт-процесса (из твоего webhook-запроса)
+    // ID смарт-процесса
     SMART_PROCESS_ID: 1038,
 
-    // Поля смарт-процесса
+    // Поля смарт-процесса (как есть из настроек)
     BRAND_FIELD: 'ufCrm8_1790681113',   // Марка авто (enumeration)
     MODEL_FIELD: 'ufCrm8_1790681206',   // Модель (string)
 
-    // Поля сделки (создашь на шаге 2, впишешь их ID сюда)
-    DEAL_BRAND_FIELD: 'ufCrm_1790687507745',  // ← например 'ufCrm8_1730000000'
-    DEAL_MODEL_FIELD: 'ufCrm_1790687534528',  // ← например 'ufCrm8_1730000001'
+    // Поля сделки (ОБЯЗАТЕЛЬНО в формате camelCase: ufCrm_...)
+    // Это исправляет проблему с записью в карточку
+    DEAL_BRAND_FIELD: 'ufCrm_1790687507745',  
+    DEAL_MODEL_FIELD: 'ufCrm_1790687534528',  
 
     // URL этой страницы (где размещён файл)
     HANDLER_URL: 'https://Anod77.github.io/car-widget/widget.html'
@@ -178,7 +179,7 @@ function startWidget(dealId) {
         loadDealValues(dealId);
     });
 
-    // --- 3. При смене марки — подгружаем модели ---
+    // --- 3. При смене марки — подгружаем модели (с фильтром на стороне API) ---
     brandSelect.addEventListener('change', function() {
         var brandId = this.value;
         modelSelect.innerHTML = '';
@@ -191,27 +192,31 @@ function startWidget(dealId) {
 
         modelSelect.innerHTML = '<option value="">Загрузка моделей…</option>';
 
- 
-BX24.callMethod('crm.item.list', {
-    entityTypeId: CONFIG.SMART_PROCESS_ID,
-    filter: { [CONFIG.BRAND_FIELD]: brandId },  // ← фильтр по ID значения перечисления
-    select: ['id', 'title', CONFIG.MODEL_FIELD]
-}, function(res) {
-    // дальше без ручной фильтрации по марке
-    var items = res.data().items || [];
-    modelSelect.innerHTML = '<option value="">— выберите модель —</option>';
-    items.forEach(function(item) {
-        var modelValue = item[CONFIG.MODEL_FIELD];
-        if (modelValue) {
-            var opt = document.createElement('option');
-            opt.value = modelValue;
-            opt.textContent = modelValue;
-            modelSelect.appendChild(opt);
-        }
-    });
-    modelSelect.disabled = false;
-});
+        // ИСПРАВЛЕНИЕ: фильтр передаётся прямо в API, а не фильтруется на клиенте
+        BX24.callMethod('crm.item.list', {
+            entityTypeId: CONFIG.SMART_PROCESS_ID,
+            filter: { [CONFIG.BRAND_FIELD]: brandId },
+            select: ['id', 'title', CONFIG.MODEL_FIELD]
+        }, function(res) {
+            if (res.error()) {
+                showStatus('Ошибка загрузки моделей: ' + res.error(), 'err');
+                return;
+            }
+            var items = res.data().items || [];
+            modelSelect.innerHTML = '<option value="">— выберите модель —</option>';
 
+            items.forEach(function(item) {
+                var modelValue = item[CONFIG.MODEL_FIELD];
+                if (modelValue) {
+                    var opt = document.createElement('option');
+                    opt.value = modelValue;
+                    opt.textContent = modelValue;
+                    modelSelect.appendChild(opt);
+                }
+            });
+
+            modelSelect.disabled = false;
+        });
     });
 
     // --- 4. Сохранение в сделку ---
@@ -228,14 +233,13 @@ BX24.callMethod('crm.item.list', {
             return;
         }
 
-        // Проверяем, что поля сделки настроены
         if (!CONFIG.DEAL_BRAND_FIELD || !CONFIG.DEAL_MODEL_FIELD) {
-            showStatus('Не настроены поля сделки в CONFIG. ' +
-                'Создай поля и впиши их ID в код виджета.', 'err');
+            showStatus('Не настроены поля сделки в CONFIG', 'err');
             return;
         }
 
         var fields = {};
+        // Пишем текст в строковые поля сделки
         fields[CONFIG.DEAL_BRAND_FIELD] = brandText;
         fields[CONFIG.DEAL_MODEL_FIELD] = modelText;
 
@@ -286,7 +290,6 @@ BX24.callMethod('crm.item.list', {
             }
             // После загрузки моделей установим сохранённую модель
             if (savedModel) {
-                // Небольшая задержка, чтобы модели успели загрузиться
                 setTimeout(function() {
                     for (var i = 0; i < modelSelect.options.length; i++) {
                         if (modelSelect.options[i].value === savedModel) {
