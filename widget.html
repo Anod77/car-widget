@@ -1,78 +1,36 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Марка и модель</title>
-    <script src="https://api.bitrix24.com/api/v1/"></script>
-    <style>
-        - { box-sizing: border-box; }
-        body { font-family: sans-serif; padding: 15px; color: #333; }
-        label { display: block; font-weight: 600; margin-top: 12px; margin-bottom: 4px; }
-        select { padding: 8px; width: 100%; border: 1px solid #ccc; border-radius: 4px; }
-        button { padding: 10px; width: 100%; background: #2fc7f1; color: #fff; border: none; border-radius: 4px; margin-top: 16px; cursor: pointer; }
-        button:disabled { background: #ccc; }
-        .status { margin-top: 10px; padding: 8px; border-radius: 4px; font-size: 14px; display: none; }
-        .status.ok { display: block; background: #d4edda; color: #155724; }
-        .status.err { display: block; background: #f8d7da; color: #721c24; }
-    </style>
-</head>
-<body>
-
-    <div id="loading">Загрузка...</div>
-
-    <div id="widget" style="display:none;">
-        <h3>Автомобиль</h3>
-        
-        <label>Марка</label>
-        <select id="brand-select">
-            <option value="">— выберите марку —</option>
-        </select>
-
-        <label>Модель</label>
-        <select id="model-select" disabled>
-            <option value="">— сначала выберите марку —</option>
-        </select>
-
-        <button id="save-btn">Сохранить в сделку</button>
-        <div id="status-msg" class="status"></div>
-    </div>
-
-    <div id="install" style="display:none;">
-        <h3>Установка...</h3>
-        <div id="install-msg">Регистрация вкладки...</div>
-    </div>
-
 <script>
-// ============================================================
-// КОНФИГУРАЦИЯ
-// ============================================================
 const CONFIG = {
     SMART_PROCESS_ID: 1038,
-    BRAND_FIELD_ID: 'ufCrm8_1790681113', // ID поля в смарт-процессе
-    MODEL_FIELD_ID: 'ufCrm8_1790681206', // ID поля в смарт-процессе
-    
-    DEAL_BRAND_FIELD: 'ufCrm_1790687507745', // Поле в Сделке (String)
-    DEAL_MODEL_FIELD: 'ufCrm_1790687534528', // Поле в Сделке (String)
-    
+    BRAND_FIELD_ID: 'ufCrm8_1790681113',
+    MODEL_FIELD_ID: 'ufCrm8_1790681206',
+    DEAL_BRAND_FIELD: 'ufCrm_1790687507745',
+    DEAL_MODEL_FIELD: 'ufCrm_1790687534528',
     HANDLER_URL: '[url=https://Anod77.github.io/car-widget/widget.html]https://Anod77.github.io/car-widget/widget.html[/url]
 };
 
-// Хранилище для соответствия ID -> Текст (чтобы при сохранении писать "Форд", а не "52")
 let brandMap = {};
 
+console.log('--- DEBUG START ---');
+
 BX24.ready(function() {
+    console.log('1. BX24.ready: Сработал');
     BX24.init(function() {
+        console.log('2. BX24.init: Сработал');
         const info = BX24.placement.info();
+        console.log('3. Данные размещения:', info);
+        
         if (info && info.placement === 'CRM_DEAL_DETAIL_TAB') {
+            console.log('4. Тип: Вкладка сделки. Запускаем initWidget...');
             initWidget(info.options.ID);
         } else {
+            console.log('4. Тип: Установка. Запускаем runInstall...');
             runInstall();
         }
     });
 });
 
 function runInstall() {
+    console.log('Функция runInstall запущена');
     document.getElementById('loading').style.display = 'none';
     document.getElementById('install').style.display = 'block';
     BX24.callMethod('placement.bind', {
@@ -80,16 +38,18 @@ function runInstall() {
         HANDLER: CONFIG.HANDLER_URL,
         TITLE: 'Марка и модель'
     }, function(res) {
+        console.log('Результат runInstall:', res);
         if (res.error()) {
             document.getElementById('install-msg').innerHTML = 'Ошибка: ' + res.error();
         } else {
-            document.getElementById('install-msg').innerHTML = 'Готово! Вкладка появилась.';
+            document.getElementById('install-msg').innerHTML = 'Готово!';
             BX24.installFinish();
         }
     });
 }
 
 function initWidget(dealId) {
+    console.log('Функция initWidget запущена для DealID:', dealId);
     document.getElementById('loading').style.display = 'none';
     document.getElementById('widget').style.display = 'block';
 
@@ -97,25 +57,32 @@ function initWidget(dealId) {
     const modelSelect = document.getElementById('model-select');
     const saveBtn = document.getElementById('save-btn');
 
-    // 1. Загружаем список марок (Enumeration)
+    console.log('5. Запрашиваем поля смарт-процесса...');
     BX24.callMethod('crm.item.fields', { entityTypeId: CONFIG.SMART_PROCESS_ID }, function(res) {
-        if (res.error()) return alert('Ошибка полей: ' + res.error());
+        console.log('6. Результат crm.item.fields:', res);
+        if (res.error()) {
+            console.error('ОШИБКА в crm.item.fields:', res.error());
+            return alert('Ошибка полей: ' + res.error());
+        }
         
-        const items = res.data().fields[CONFIG.BRAND_FIELD_ID].items || [];
+        const fields = res.data().fields;
+        const items = fields[CONFIG.BRAND_FIELD_ID].items || [];
+        console.log('7. Найдено марок:', items.length);
+
         items.forEach(item => {
             const opt = document.createElement('option');
-            opt.value = item.ID; // Кладем ID
-            opt.textContent = item.VALUE; // Показываем текст
+            opt.value = item.ID;
+            opt.textContent = item.VALUE;
             brandSelect.appendChild(opt);
-            brandMap[item.ID] = item.VALUE; // Запоминаем связь
+            brandMap[item.ID] = item.VALUE;
         });
 
-        // 2. Загружаем текущие данные сделки
+        console.log('8. Загружаем текущие данные сделки...');
         loadCurrentDeal(dealId);
     });
 
-    // 3. Событие смены марки
     brandSelect.addEventListener('change', function() {
+        console.log('Смена марки. Новый ID:', this.value);
         const brandId = this.value;
         modelSelect.innerHTML = '<option value="">Загрузка...</option>';
         modelSelect.disabled = true;
@@ -125,12 +92,13 @@ function initWidget(dealId) {
             return;
         }
 
-        // Фильтруем по ID (как в твоем тесте!)
+        console.log('9. Запрашиваем модели для ID:', brandId);
         BX24.callMethod('crm.item.list', {
             entityTypeId: CONFIG.SMART_PROCESS_ID,
             filter: { [CONFIG.BRAND_FIELD_ID]: brandId },
             select: [CONFIG.MODEL_FIELD_ID]
         }, function(res) {
+            console.log('10. Результат crm.item.list:', res);
             if (res.error()) {
                 modelSelect.innerHTML = '<option value="">Ошибка загрузки</option>';
                 return;
@@ -150,10 +118,11 @@ function initWidget(dealId) {
         });
     });
 
-    // 4. Сохранение
     saveBtn.addEventListener('click', function() {
+        console.log('Клик по кнопке Сохранить');
         const selectedBrandId = brandSelect.value;
         const selectedModel = modelSelect.value;
+        console.log('Данные для сохранения:', { selectedBrandId, selectedModel });
 
         if (!selectedBrandId || !selectedModel) {
             showStatus('Выберите марку и модель!', 'err');
@@ -161,15 +130,17 @@ function initWidget(dealId) {
         }
 
         const fields = {};
-        fields[CONFIG.DEAL_BRAND_FIELD] = brandMap[selectedBrandId]; // Пишем ТЕКСТ марки
-        fields[CONFIG.DEAL_MODEL_FIELD] = selectedModel; // Пишем ТЕКСТ модели
+        fields[CONFIG.DEAL_BRAND_FIELD] = brandMap[selectedBrandId];
+        fields[CONFIG.DEAL_MODEL_FIELD] = selectedModel;
 
+        console.log('11. Отправляем crm.item.update...', fields);
         saveBtn.disabled = true;
         BX24.callMethod('crm.item.update', {
             entityTypeId: 2,
             id: dealId,
             fields: fields
         }, function(res) {
+            console.log('12. Результат crm.item.update:', res);
             saveBtn.disabled = false;
             if (res.error()) {
                 showStatus('Ошибка: ' + res.error(), 'err');
@@ -180,28 +151,29 @@ function initWidget(dealId) {
     });
 
     function loadCurrentDeal(id) {
+        console.log('Загрузка значений сделки для ID:', id);
         BX24.callMethod('crm.item.get', { entityTypeId: 2, id: id }, function(res) {
-            if (res.error()) return;
+            console.log('Результат crm.item.get:', res);
+            if (res.error()) {
+                console.error('Ошибка crm.item.get:', res.error());
+                return;
+            }
             const deal = res.data().item;
-            
-            // Ищем марку по тексту
             const savedBrandText = deal[CONFIG.DEAL_BRAND_FIELD];
             if (savedBrandText) {
                 for (let id in brandMap) {
                     if (brandMap[id] === savedBrandText) {
                         brandSelect.value = id;
-                        // Имитируем смену, чтобы подгрузились модели
                         brandSelect.dispatchEvent(new Event('change'));
                         break;
                     }
                 }
             }
-
-            // Устанавливаем модель через небольшую паузу после загрузки списка
             setTimeout(() => {
                 const savedModel = deal[CONFIG.DEAL_MODEL_FIELD];
                 if (savedModel) {
                     modelSelect.value = savedModel;
+                    console.log('Модель установлена из сделки:', savedModel);
                 }
             }, 1000);
         });
@@ -215,5 +187,3 @@ function initWidget(dealId) {
     }
 }
 </script>
-</body>
-</html>
