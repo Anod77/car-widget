@@ -5,7 +5,7 @@ const CONFIG = {
     MODEL_FIELD_ID: 'ufCrm8_1790681206',
     DEAL_BRAND_FIELD: 'ufCrm_1790687507745',
     DEAL_MODEL_FIELD: 'ufCrm_1790687534528',
-    HANDLER_URL: '[url=https://Anod77.github.io/car-widget/widget.html]https://Anod77.github.io/car-widget/widget.html[/url]
+    HANDLER_URL: 'https://Anod77.github.io/car-widget/widget.html'
 };
 
 let brandMap = {};
@@ -31,8 +31,13 @@ BX24.ready(function() {
 
 function runInstall() {
     console.log('Функция runInstall запущена');
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('install').style.display = 'block';
+    const loadingEl = document.getElementById('loading');
+    const installEl = document.getElementById('install');
+    const installMsg = document.getElementById('installMsg');
+    
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (installEl) installEl.style.display = 'block';
+
     BX24.callMethod('placement.bind', {
         PLACEMENT: 'CRM_DEAL_DETAIL_TAB',
         HANDLER: CONFIG.HANDLER_URL,
@@ -40,9 +45,9 @@ function runInstall() {
     }, function(res) {
         console.log('Результат runInstall:', res);
         if (res.error()) {
-            document.getElementById('install-msg').innerHTML = 'Ошибка: ' + res.error();
+            if (installMsg) installMsg.innerHTML = '<div class="status err">Ошибка: ' + res.error() + '</div>';
         } else {
-            document.getElementById('install-msg').innerHTML = 'Готово!';
+            if (installMsg) installMsg.innerHTML = '<div class="status ok">Готово!</div>';
             BX24.installFinish();
         }
     });
@@ -50,23 +55,38 @@ function runInstall() {
 
 function initWidget(dealId) {
     console.log('Функция initWidget запущена для DealID:', dealId);
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('widget').style.display = 'block';
+    
+    const loadingEl = document.getElementById('loading');
+    const widgetEl = document.getElementById('widget');
+    const brandSelect = document.getElementById('brand');
+    const modelSelect = document.getElementById('model');
+    const saveBtn = document.getElementById('saveBtn');
+    const statusEl = document.getElementById('status');
 
-    const brandSelect = document.getElementById('brand-select');
-    const modelSelect = document.getElementById('model-select');
-    const saveBtn = document.getElementById('save-btn');
+    // Проверка, что элементы нашлись (если тут null — проблема в HTML)
+    if (!brandSelect || !modelSelect || !saveBtn || !statusEl) {
+        console.error('КРИТИЧЕСКАЯ ОШИБКА: Не найдены HTML элементы! Проверь id в HTML.');
+        console.error('brand:', brandSelect, 'model:', modelSelect, 'btn:', saveBtn, 'status:', statusEl);
+        return;
+    }
+
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (widgetEl) widgetEl.style.display = 'block';
 
     console.log('5. Запрашиваем поля смарт-процесса...');
     BX24.callMethod('crm.item.fields', { entityTypeId: CONFIG.SMART_PROCESS_ID }, function(res) {
         console.log('6. Результат crm.item.fields:', res);
         if (res.error()) {
             console.error('ОШИБКА в crm.item.fields:', res.error());
-            return alert('Ошибка полей: ' + res.error());
+            if (statusEl) {
+                statusEl.className = 'status err';
+                statusEl.textContent = 'Ошибка загрузки марок: ' + res.error();
+            }
+            return;
         }
         
         const fields = res.data().fields;
-        const items = fields[CONFIG.BRAND_FIELD_ID].items || [];
+        const items = fields[CONFIG.BRAND_FIELD_ID]?.items || [];
         console.log('7. Найдено марок:', items.length);
 
         items.forEach(item => {
@@ -78,7 +98,7 @@ function initWidget(dealId) {
         });
 
         console.log('8. Загружаем текущие данные сделки...');
-        loadCurrentDeal(dealId);
+        loadCurrentDeal(dealId, brandSelect, modelSelect, statusEl);
     });
 
     brandSelect.addEventListener('change', function() {
@@ -100,7 +120,7 @@ function initWidget(dealId) {
         }, function(res) {
             console.log('10. Результат crm.item.list:', res);
             if (res.error()) {
-                modelSelect.innerHTML = '<option value="">Ошибка загрузки</option>';
+                modelSelect.innerHTML = '<option value="">Ошибка загрузки моделей</option>';
                 return;
             }
             const items = res.data().items || [];
@@ -125,7 +145,10 @@ function initWidget(dealId) {
         console.log('Данные для сохранения:', { selectedBrandId, selectedModel });
 
         if (!selectedBrandId || !selectedModel) {
-            showStatus('Выберите марку и модель!', 'err');
+            if (statusEl) {
+                statusEl.className = 'status err';
+                statusEl.textContent = 'Выберите марку и модель!';
+            }
             return;
         }
 
@@ -143,44 +166,55 @@ function initWidget(dealId) {
             console.log('12. Результат crm.item.update:', res);
             saveBtn.disabled = false;
             if (res.error()) {
-                showStatus('Ошибка: ' + res.error(), 'err');
+                if (statusEl) {
+                    statusEl.className = 'status err';
+                    statusEl.textContent = 'Ошибка сохранения: ' + res.error();
+                }
             } else {
-                showStatus('Сохранено!', 'ok');
+                if (statusEl) {
+                    statusEl.className = 'status ok';
+                    statusEl.textContent = 'Сохранено!';
+                }
             }
         });
     });
+}
 
-    function loadCurrentDeal(id) {
-        console.log('Загрузка значений сделки для ID:', id);
-        BX24.callMethod('crm.item.get', { entityTypeId: 2, id: id }, function(res) {
-            console.log('Результат crm.item.get:', res);
-            if (res.error()) {
-                console.error('Ошибка crm.item.get:', res.error());
-                return;
+function loadCurrentDeal(id, brandSelect, modelSelect, statusEl) {
+    console.log('Загрузка значений сделки для ID:', id);
+    BX24.callMethod('crm.item.get', { entityTypeId: 2, id: id }, function(res) {
+        console.log('Результат crm.item.get:', res);
+        if (res.error()) {
+            console.error('Ошибка crm.item.get:', res.error());
+            if (statusEl) {
+                statusEl.className = 'status err';
+                statusEl.textContent = 'Не удалось прочитать сделку';
             }
-            const deal = res.data().item;
-            const savedBrandText = deal[CONFIG.DEAL_BRAND_FIELD];
-            if (savedBrandText) {
-                for (let id in brandMap) {
-                    if (brandMap[id] === savedBrandText) {
-                        brandSelect.value = id;
-                        brandSelect.dispatchEvent(new Event('change'));
-                        break;
-                    }
+            return;
+        }
+        const deal = res.data().item;
+        const savedBrandText = deal[CONFIG.DEAL_BRAND_FIELD];
+        if (savedBrandText) {
+            for (let id in brandMap) {
+                if (brandMap[id] === savedBrandText) {
+                    brandSelect.value = id;
+                    brandSelect.dispatchEvent(new Event('change'));
+                    break;
                 }
             }
-            setTimeout(() => {
-                const savedModel = deal[CONFIG.DEAL_MODEL_FIELD];
-                if (savedModel) {
-                    modelSelect.value = savedModel;
-                    console.log('Модель установлена из сделки:', savedModel);
-                }
-            }, 1000);
-        });
-    }
+        }
+        setTimeout(() => {
+            const savedModel = deal[CONFIG.DEAL_MODEL_FIELD];
+            if (savedModel) {
+                modelSelect.value = savedModel;
+                console.log('Модель установлена из сделки:', savedModel);
+            }
+        }, 1000);
+    });
+}
 
-    function showStatus(msg, type) {
-        const el = document.getElementById('status-msg');
+function showStatus(msg, type, el) {
+    if (el) {
         el.textContent = msg;
         el.className = 'status ' + type;
         setTimeout(() => { el.className = 'status'; }, 3000);
