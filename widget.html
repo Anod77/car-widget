@@ -63,7 +63,7 @@ function initWidget(dealId) {
     const saveBtn = document.getElementById('saveBtn');
     const statusEl = document.getElementById('status');
 
-    // Проверка, что элементы нашлись (если тут null — проблема в HTML)
+    // Проверка, что элементы нашлись if found (если тут null — проблема в HTML)
     if (!brandSelect || !modelSelect || !saveBtn || !statusEl) {
         console.error('КРИТИЧЕСКАЯ ОШИБКА: Не найдены HTML элементы! Проверь id в HTML.');
         console.error('brand:', brandSelect, 'model:', modelSelect, 'btn:', saveBtn, 'status:', statusEl);
