@@ -1,3 +1,19 @@
+
+<!DOCTYPE html>
+<html>
+  <head><meta charset="utf-8"></head>
+  <body>
+    <div id="loading">Загрузка...</div>
+    <div id="install" style="display:none;">
+      <button id="installBtn">Готово</button>
+      <div id="installMsg"></div>
+    </div>
+    <div id="widget" style="display:none;">
+      <label>Марка: <select id="brand"><option value="">— выберите марку —</option></select></label>
+      <label>Модель: <select id="model"><option value="">— выберите модель —</option></select></label>
+      <button id="saveBtn">Сохранить</button>
+      <div id="status"></div>
+    </div>
 <script>
 const CONFIG = {
     SMART_PROCESS_ID: 1038,
@@ -221,3 +237,5 @@ function showStatus(msg, type, el) {
     }
 }
 </script>
+  </body>
+</html>
